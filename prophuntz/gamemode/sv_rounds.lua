@@ -40,16 +40,18 @@ function table.shuffle(t)
 end
 
 function RespawnAllPlayers()
+    print("[DEBUG] Début de RespawnAllPlayers()")
     for _, ply in ipairs(player.GetAll()) do
-		ply:KillSilent()
-        ply:Respawn()  -- Respawn le joueur s'il est mort
-			if ply:Team() == TEAM_PROPS then
-				ConfigurePropsTeam()
-			elseif ply:Team() == TEAM_HUNTERS then
-				ConfigureHuntersTeam()
-			end
-		print("Les joueur ont eter respawn")
+        ply:KillSilent()
+        ply:Respawn()
+        print("[DEBUG] Respawn du joueur : " .. ply:Nick())
+        if ply:Team() == TEAM_PROPS then
+            ConfigurePropsTeam()
+        elseif ply:Team() == TEAM_HUNTERS then
+            ConfigureHuntersTeam()
+        end
     end
+    print("[DEBUG] Fin de RespawnAllPlayers()")
 end
 
 function StartHuntersFreeze()
@@ -93,23 +95,71 @@ function AssignRoles()
     end
 end
 
--- Initialisation
 function PHZ:Initialize()
-    print("[DEBUG] Initialisation...")
+    print("[DEBUG] Initialisation de PHZ")
     StartPrepRound()
 end
 
--- Commence la préparation du round
 function StartPrepRound()
-    print("[DEBUG] Commencement du round de préparation...")
+    print("[DEBUG] Début de StartPrepRound()")
     currentRound = ROUND_PREP
     roundEndTime = CurTime() + 15
-
-    -- Notifier les joueurs
+    print("[DEBUG] Etat actuel : ROUND_PREP | Temps de fin : " .. roundEndTime)
     for _, v in ipairs(player.GetAll()) do
         v:ChatPrint("Round de préparation commence!")
     end
+    print("[DEBUG] Fin de StartPrepRound()")
+    
+    -- Démarrer le round actif après le temps de préparation
+    timer.Simple(15, function()
+        if currentRound == ROUND_PREP then
+            PHZ:RoundStart()
+        end
+    end)
 end
+
+-- Vérifie l'état des équipes pour déterminer si une équipe a gagné
+function CheckTeamStatus()
+    local propsAlive = 0
+    local huntersAlive = 0
+
+    -- Compte le nombre de joueurs vivants pour chaque équipe
+    for _, ply in ipairs(player.GetAll()) do
+        if ply:Alive() and ply:Team() == TEAM_PROPS then
+            propsAlive = propsAlive + 1
+        elseif ply:Alive() and ply:Team() == TEAM_HUNTERS then
+            huntersAlive = huntersAlive + 1
+        end
+    end
+
+    -- Vérifie si une des équipes a gagné
+    if propsAlive == 0 then
+        DeclareWinners(TEAM_HUNTERS)
+    elseif huntersAlive == 0 then
+        DeclareWinners(TEAM_PROPS)
+    end
+end
+
+-- Déclare l'équipe gagnante
+function DeclareWinners(winningTeam)
+    if winningTeam == TEAM_HUNTERS then
+        for _, v in ipairs(player.GetAll()) do
+            v:ChatPrint("Les Chasseurs ont gagné!")
+        end
+    else
+        for _, v in ipairs(player.GetAll()) do
+            v:ChatPrint("Les Props ont gagné!")
+        end
+    end
+    PHZ:RoundEnd()
+end
+
+-- Hook pour écouter le décès d'un joueur
+hook.Add("PlayerDeath", "PHZ_PlayerDeath", function(victim, inflictor, attacker)
+    timer.Simple(1, function() -- Utilise un délai pour permettre à toutes les fonctions de s'exécuter correctement avant de vérifier l'état des équipes
+        CheckTeamStatus()
+    end)
+end)
 
 -- Commence le round
 function PHZ:RoundStart()
@@ -121,11 +171,10 @@ function PHZ:RoundStart()
 	net.WriteInt(currentRound, 32)
 	net.WriteFloat(roundEndTime)
 	net.Broadcast()
-
+	
 	RespawnAllPlayers()
-    AssignRoles()
-    StartPrepRound()
-	 
+	AssignRoles()
+	
     -- Respawn et notifier les joueurs
     for _, ply in ipairs(player.GetAll()) do
         if not ply:Alive() then
@@ -133,27 +182,26 @@ function PHZ:RoundStart()
         end
         ply:ChatPrint("La chasse commence!")
     end
-
-    -- Geler et obscurcir la vision des hunters
-    for _, ply in ipairs(player.GetAll()) do
-        if ply:Team() == "TEAM_HUNTERS" then  -- Remplacez par votre méthode pour vérifier le rôle du joueur
-            ply:Freeze(true)  -- Freeze le joueur
-            net.Start("PHZ_StartBlur")
-            net.Send(ply)  -- Demande au client d'activer le flou
-        end
-    end
-
-    timer.Simple(20, function()  -- Après 20 secondes
-        for _, ply in ipairs(player.GetAll()) do
-            if ply:Team() == "TEAM_HUNTERS" then
-                ply:Freeze(false)  -- Dégèle le joueur
-                net.Start("PHZ_StopBlur")
-                net.Send(ply)  -- Demande au client de désactiver le flou
+	
+	-- Lorsque le timer du round actif est terminé, vérifiez si des props sont encore en vie. Si oui, ils gagnent.
+    timer.Simple(ROUND_TIME, function()
+        if currentRound == ROUND_ACTIVE then
+            PHZ:RoundEnd()
+		end
+            local propsAlive = 0
+            for _, ply in ipairs(player.GetAll()) do
+                if ply:Alive() and ply:Team() == TEAM_PROPS then
+                    propsAlive = propsAlive + 1
+                end
             end
-        end
-    end)
-end
-
+            if propsAlive > 0 then
+                DeclareWinners(TEAM_PROPS)
+            else
+                DeclareWinners(TEAM_HUNTERS)
+            end
+        end)
+    end
+	
 -- Fin du round
 function PHZ:RoundEnd()
     print("[DEBUG] Fin du round...")
@@ -165,6 +213,12 @@ function PHZ:RoundEnd()
         v:ChatPrint("Round terminé!")
     end
 	
+	-- Après un court délai, revenez à la phase de préparation.
+    timer.Simple(5, function()  -- Par exemple, attendez 5 secondes avant de commencer un nouveau round
+        if currentRound == ROUND_END then
+            StartPrepRound()
+        end
+    end)
 end
 
 -- Gestionnaire de Think
@@ -179,3 +233,10 @@ function PHZ:Think()
         end
     end
 end
+
+-- Empêche le respawn pendant un round actif
+hook.Add("PlayerDeathThink", "PHZ_PreventRespawnDuringRound", function(ply)
+    if currentRound == ROUND_ACTIVE then
+        return false  -- Empêche le respawn
+    end
+end)
