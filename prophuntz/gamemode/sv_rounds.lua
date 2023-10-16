@@ -12,11 +12,43 @@ local ROUND_ACTIVE = 2
 local ROUND_END = 3
 
 local ROUND_TIME = 300
+local ROUND_START_DELAY = 5
+local ROUND_START_PLAYERS = 2
+local HUNTERS_FREEZE_TIME = 20
+local HUNTERS_BLUR_AMOUNT = 100
+local HUNTERS_VISION_ZOOM = 150
 
 local currentRound = ROUND_PREP
 local roundEndTime = 0
 local playersInPrep = 0
-local playersConnected = 0
+local playersConnected = 0 
+local playersAlive = 0
+
+local roundInProgress = false
+
+-- Sur le serveur, envoyez des données réseau au client lorsque quelque chose change
+
+-- Dans votre fonction net.Receive pour mettre à jour playersAlive
+net.Receive("PHZ_UpdateHUDData", function()
+    currentRound = net.ReadInt(32)
+    timeRemaining = net.ReadFloat()
+    playersAlive = net.ReadInt(32)  -- Mettez à jour playersAlive avec la valeur reçue du serveur
+end)
+
+function HandlePlayerJoining(ply)
+    playersConnected = playersConnected + 1
+
+    if currentRound == ROUND_ACTIVE then
+        ply:SetTeam(TEAM_SPECTATORS)
+        ply:PrintMessage(HUD_PRINTCENTER, "Attendez la fin du round pour rejoindre le jeu.")
+    elseif currentRound == ROUND_PREP then
+        playersInPrep = playersInPrep + 1
+    end
+
+    if currentRound == ROUND_PREP and playersConnected >= ROUND_START_PLAYERS then
+        PHZ:RoundStart()
+    end
+end
 
 function table.shuffle(t)
     local n = #t
@@ -29,26 +61,27 @@ function table.shuffle(t)
 end
 
 function RespawnAllPlayers()
-    print("[DEBUG] Début de RespawnAllPlayers()")
     for _, ply in ipairs(player.GetAll()) do
         ply:Spawn()
-        print("[DEBUG] Respawn du joueur : " .. ply:Nick())
     end
-    print("[DEBUG] Fin de RespawnAllPlayers()")
 end
 
 function StartHuntersFreeze()
     for _, ply in ipairs(player.GetAll()) do
         if ply:Team() == TEAM_HUNTERS then
+            ply:ScreenFade(SCREENFADE.IN, Color(0, 0, 0, 255), 20, 0)
             ply:Freeze(true)
             net.Start("PHZ_StartBlur")
+            net.WriteFloat(HUNTERS_BLUR_AMOUNT)
+            net.WriteFloat(HUNTERS_VISION_ZOOM)
             net.Send(ply)
         end
     end
 
-    timer.Simple(20, function()
+    timer.Simple(HUNTERS_FREEZE_TIME, function()
         for _, ply in ipairs(player.GetAll()) do
             if ply:Team() == TEAM_HUNTERS then
+                ply:ScreenFade(SCREENFADE.OUT, Color(0, 0, 0, 0), 5, 0)
                 ply:Freeze(false)
                 net.Start("PHZ_StopBlur")
                 net.Send(ply)
@@ -79,27 +112,32 @@ function AssignRoles()
         RespawnAllPlayers(player)
         print("[DEBUG] " .. player:Nick() .. " est un Hunter")
     end
+
+    playersAlive = #players
 end
 
 function PHZ:Initialize()
-    print("[DEBUG] Initialisation de PHZ")
     StartPrepRound()
 end
 
 function StartPrepRound()
-    print("[DEBUG] Début de StartPrepRound()")
     currentRound = ROUND_PREP
-    roundEndTime = 0
-    print("[DEBUG] Etat actuel : ROUND_PREP | Temps de fin : " .. roundEndTime)
-    for _, v in ipairs(player.GetAll()) do
-        v:ChatPrint("Round de préparation commence!")
+    roundEndTime = CurTime() + ROUND_START_DELAY
+	local message = ""
+    message = "Round de préparation commence!"
+	
+	for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) and ply:IsPlayer() then
+            ply:PrintMessage(HUD_PRINTCENTER, message)
+        end
     end
-    print("[DEBUG] Fin de StartPrepRound()")
 
-    if currentRound == ROUND_PREP and (playersInPrep > 1) then
-        print("[DEBUG] Démarrage du round actif")
-        PHZ:RoundStart()
-    end
+    timer.Create("CheckPlayersInPrepTimer", 1, 0, function()
+        if currentRound == ROUND_PREP and (playersInPrep >= ROUND_START_PLAYERS) then
+            PHZ:RoundStart()
+            timer.Remove("CheckPlayersInPrepTimer")
+        end
+    end)
 end
 
 function CheckTeamStatus()
@@ -114,23 +152,34 @@ function CheckTeamStatus()
         end
     end
 
+    playersAlive = propsAlive + huntersAlive
+
     if propsAlive == 0 then
         DeclareWinners(TEAM_HUNTERS)
     elseif huntersAlive == 0 then
         DeclareWinners(TEAM_PROPS)
     end
+
+    if playersAlive == 0 then
+        StartPrepRound()
+    end
 end
 
 function DeclareWinners(winningTeam)
+    local message = ""
+
     if winningTeam == TEAM_HUNTERS then
-        for _, v in ipairs(player.GetAll()) do
-            v:ChatPrint("Les Chasseurs ont gagné!")
-        end
+        message = "Les Chasseurs ont gagné!"
     else
-        for _, v in ipairs(player.GetAll()) do
-            v:ChatPrint("Les Props ont gagné!")
+        message = "Les Props ont gagné!"
+    end
+
+    for _, v in ipairs(player.GetAll()) do
+        if IsValid(v) and v:IsPlayer() then
+            v:PrintMessage(HUD_PRINTCENTER, message)
         end
     end
+
     PHZ:RoundEnd()
 end
 
@@ -141,20 +190,22 @@ hook.Add("PlayerDeath", "PHZ_PlayerDeath", function(victim, inflictor, attacker)
 end)
 
 function PHZ:RoundStart()
-    print("[DEBUG] Début du round actif...")
     currentRound = ROUND_ACTIVE
     roundEndTime = CurTime() + ROUND_TIME
+    roundInProgress = true
 
     AssignRoles()
 
-    net.Start("PHZ_UpdateRoundState")
-    net.WriteInt(currentRound, 32)
-    net.WriteFloat(roundEndTime)
-    net.Broadcast()
-
-    for _, ply in ipairs(player.GetAll()) do
-        ply:ChatPrint("La chasse commence!")
+	local message = ""
+    message = "La chasse commence!"
+	
+	for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) and ply:IsPlayer() then
+            ply:PrintMessage(HUD_PRINTCENTER, message)
+        end
     end
+	
+    StartHuntersFreeze()
 
     timer.Simple(ROUND_TIME, function()
         if currentRound == ROUND_ACTIVE then
@@ -175,14 +226,17 @@ function PHZ:RoundStart()
 end
 
 function PHZ:RoundEnd()
-    print("[DEBUG] Fin du round...")
     currentRound = ROUND_END
     roundEndTime = CurTime() + 10
+	local message = ""
+    message = "Round terminé!"
 
-    for _, v in ipairs(player.GetAll()) do
-        v:ChatPrint("Round terminé!")
+    for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) and ply:IsPlayer() then
+            ply:PrintMessage(HUD_PRINTCENTER, message)
+        end
     end
-
+	
     timer.Simple(5, function()
         if currentRound == ROUND_END then
             StartPrepRound()
@@ -204,25 +258,24 @@ end
 
 hook.Add("PlayerInitialSpawn", "MonHookInitialSpawn", function(ply)
     playersConnected = playersConnected + 1
-    if playersConnected >= 2 then
+    playersInPrep = playersInPrep + 1
+
+    if playersConnected >= ROUND_START_PLAYERS then
         PHZ:RoundStart()
     end
 end)
 
-hook.Add("PlayerDeathThink", "PHZ_PreventRespawnDuringRound", function(ply)
-    if currentRound == ROUND_ACTIVE then
-        return false
-    end
-end)
-
 hook.Add("PlayerDisconnected", "TrackPlayersInPrep", function(ply)
-    playersInPrep = math.max(playersInPrep - 1, 0)
-    if currentRound == ROUND_PREP and playersInPrep < 2 then
-        print("[DEBUG] Le round est réinitialisé en raison de la déconnexion d'un joueur.")
+    playersConnected = math.max(playersConnected - 2, 0)
+
+    if currentRound == ROUND_ACTIVE and playersInPrep < ROUND_START_PLAYERS then
         PHZ:RoundEnd()
     end
 end)
 
-hook.Add("PlayerDisconnected", "TrackPlayersInPrep", function(ply)
-    playersInPrep = math.max(playersInPrep - 1, 0)
+hook.Add("PlayerSpawn", "PHZ_PlayerSpawn", function(ply)
+    if currentRound == ROUND_ACTIVE then
+        ply:PrintMessage(HUD_PRINTCENTER, "Vous ne pouvez pas respawn tant que le round est en cours.")
+        return false
+    end
 end)
