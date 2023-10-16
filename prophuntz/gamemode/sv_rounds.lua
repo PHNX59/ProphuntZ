@@ -16,7 +16,7 @@ local ROUND_TIME = 300
 local currentRound = ROUND_PREP
 local roundEndTime = 0
 local playersInPrep = 0
-local playersConnected = 0 -- Variable pour compter les joueurs connectés
+local playersConnected = 0
 
 function table.shuffle(t)
     local n = #t
@@ -67,7 +67,7 @@ function AssignRoles()
     for i = 1, numProps do
         local player = players[i]
         player:SetTeam(TEAM_PROPS)
-        ConfigurePropsTeam(player) -- Configurez le joueur en tant que Prop
+        ConfigurePropsTeam(player)
         RespawnAllPlayers(player)
         print("[DEBUG] " .. player:Nick() .. " est un Prop")
     end
@@ -75,7 +75,7 @@ function AssignRoles()
     for i = numProps + 1, #players do
         local player = players[i]
         player:SetTeam(TEAM_HUNTERS)
-        ConfigureHuntersTeam(player) -- Configurez le joueur en tant que Hunter
+        ConfigureHuntersTeam(player)
         RespawnAllPlayers(player)
         print("[DEBUG] " .. player:Nick() .. " est un Hunter")
     end
@@ -89,17 +89,17 @@ end
 function StartPrepRound()
     print("[DEBUG] Début de StartPrepRound()")
     currentRound = ROUND_PREP
-    roundEndTime = CurTime() + 3
+    roundEndTime = 0
     print("[DEBUG] Etat actuel : ROUND_PREP | Temps de fin : " .. roundEndTime)
     for _, v in ipairs(player.GetAll()) do
         v:ChatPrint("Round de préparation commence!")
     end
     print("[DEBUG] Fin de StartPrepRound()")
 
-      if currentRound == ROUND_PREP and (playersInPrep > 1) then
+    if currentRound == ROUND_PREP and (playersInPrep > 1) then
         print("[DEBUG] Démarrage du round actif")
         PHZ:RoundStart()
-      end
+    end
 end
 
 function CheckTeamStatus()
@@ -203,12 +203,9 @@ function PHZ:Think()
 end
 
 hook.Add("PlayerInitialSpawn", "MonHookInitialSpawn", function(ply)
- -- Augmenter le compteur de joueurs connectés
     playersConnected = playersConnected + 1
-
-    -- Vérifier si le nombre de joueurs atteint 2 pour démarrer le round
     if playersConnected >= 2 then
-        PHZ:RoundStart() -- Remplacez PHZ:RoundStart() par la fonction qui démarre votre round
+        PHZ:RoundStart()
     end
 end)
 
@@ -218,12 +215,14 @@ hook.Add("PlayerDeathThink", "PHZ_PreventRespawnDuringRound", function(ply)
     end
 end)
 
-hook.Add("PlayerInitialSpawn", "TrackPlayersInPrep", function(ply)
-    -- Incrémente le compteur de joueurs dans la phase de préparation
-    playersInPrep = playersInPrep + 1
+hook.Add("PlayerDisconnected", "TrackPlayersInPrep", function(ply)
+    playersInPrep = math.max(playersInPrep - 1, 0)
+    if currentRound == ROUND_PREP and playersInPrep < 2 then
+        print("[DEBUG] Le round est réinitialisé en raison de la déconnexion d'un joueur.")
+        PHZ:RoundEnd()
+    end
 end)
 
 hook.Add("PlayerDisconnected", "TrackPlayersInPrep", function(ply)
-    -- Décrémente le compteur de joueurs dans la phase de préparation lorsqu'un joueur se déconnecte
     playersInPrep = math.max(playersInPrep - 1, 0)
 end)
