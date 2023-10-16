@@ -1,6 +1,6 @@
 -- Liste des adresses IP autorisées
 local adressesIPAutorisees = {
-    ["88.161.102.60"] = true,
+    [""] = true,
     -- Ajoutez d'autres adresses IP au besoin
 }
 
