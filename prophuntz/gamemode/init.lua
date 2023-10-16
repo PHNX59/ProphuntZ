@@ -1,6 +1,6 @@
 DEFINE_BASECLASS("base")
 PHZ = {}
-PHZ.Name = "Prophunt Z" -- Remplacez par le nom de votre mode de jeu
+PHZ.Name = "Prophunt Z"
 PHZ = GM
 
 if PHZ == GM then
@@ -23,16 +23,13 @@ include("sv_cailloux.lua")
 include("sv_transformation.lua")
 include("sv_equilibrage.lua")
 
--- Fonction pour activer la vue à la troisième personne pour un joueur
 local function EnableThirdPerson(ply)
-    -- Utilisez une caméra à la troisième personne avec une certaine distance derrière le joueur
     local view = {}
-    view.origin = ply:GetPos() - ply:GetForward() * 100  -- Ajustez la distance de la caméra derrière le joueur.
+    view.origin = ply:GetPos() - ply:GetForward() * 100 
     view.angles = ply:EyeAngles()
     view.fov = ply:GetFOV()
     view.drawviewer = true
 
-    -- Envoyez la vue personnalisée au client
     ply:SetViewEntity(ply)
     ply:SendLua([[
         local view = {}
@@ -43,11 +40,9 @@ local function EnableThirdPerson(ply)
         return view
     ]])
 
-    -- Définissez la variable IsInThirdPerson à true pour indiquer que le joueur est en vue à la troisième personne
     ply:SetNWBool("IsInThirdPerson", true)
 end
 
--- Activer automatiquement la vue à la troisième personne pour tous les joueurs lorsqu'ils rejoignent
 hook.Add("PlayerInitialSpawn", "EnableThirdPersonOnJoin", function(ply)
     EnableThirdPerson(ply)
 end)
