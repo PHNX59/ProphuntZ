@@ -1,0 +1,91 @@
+-- Configuration
+local CAILLOU_MODEL = "models/props_junk/rock001a.mdl"
+local CAILLOU_SOUND = "physics/body/body_medium_impact_soft1.wav"
+local PAIN_SOUND = "npc/metropolice/pain1.wav" -- Vous pouvez changer cela en fonction du son que vous préférez.
+local RECHARGE_TIME = 1
+local MAX_SOUND_DISTANCE = 1000
+
+-- Vérifie si le joueur a déjà un caillou actif
+local function PlayerHasActiveStone(ply)
+    for _, ent in pairs(ents.FindByClass("prop_physics")) do
+        if ent:GetModel() == CAILLOU_MODEL and ent.thrower == ply then
+            return true
+        end
+    end
+    return false
+end
+
+-- Fonction pour lancer un caillou
+local function ThrowStone(ply)
+    if ply:Team() == TEAM_PROPS and (not ply.nextStoneTime or CurTime() >= ply.nextStoneTime or ply:IsAdmin()) then
+        local caillou = ents.Create("prop_physics")
+        caillou:SetModel(CAILLOU_MODEL)
+        caillou:SetModelScale(0.5, 0)  -- Réduire la taille du caillou à 50%
+        caillou:SetPos(ply:EyePos() + (ply:EyeAngles():Forward() * 50))
+        caillou:Spawn()
+		
+		caillou.thrower = ply  -- Attribuer le caillou au joueur
+
+        local phys = caillou:GetPhysicsObject()
+        if IsValid(phys) then
+            phys:SetVelocity(ply:EyeAngles():Forward() * 1000)
+        end
+
+         ply:EmitSound(CAILLOU_SOUND, 75, 100, CAILLOU_THROW_VOLUME)  -- Jouer le son de jet avec le volume spécifié
+
+        -- Supprimer le caillou après 3 secondes
+        timer.Simple(3, function()
+            if IsValid(caillou) then 
+                caillou:Remove()
+            end
+        end)
+
+		-- Lorsque le caillou touche le chasseur, nous émettons le son de douleur.
+		timer.Simple(0.1, function()
+			local trace = {}
+			trace.start = ply:EyePos()
+			trace.endpos = trace.start + ply:EyeAngles():Forward() * 1000
+			trace.filter = ply
+
+			local tr = util.TraceLine(trace)
+
+			if tr.HitNonWorld and tr.Entity:IsPlayer() and (tr.Entity:Team() == TEAM_HUNTERS or tr.Entity:IsBot()) then
+				tr.Entity:EmitSound(PAIN_SOUND, 75, 100, volume) -- Jouer le son de douleur avec un volume dynamique
+
+				for _, player in ipairs(player.GetAll()) do
+					player:ChatPrint(ply:Nick() .. " a lancé un caillou sur " .. tr.Entity:Nick() .. "!")
+				end
+
+				-- Effet de flou sur le chasseur touché
+				tr.Entity:SetNWBool("BlurredVision", true)
+				timer.Simple(3, function()
+					if IsValid(tr.Entity) then
+						tr.Entity:SetNWBool("BlurredVision", false)
+					end
+				end)
+			else
+				for _, player in ipairs(player.GetAll()) do
+					player:ChatPrint(ply:Nick() .. " a lancé un caillou mais n'a touché personne!")
+				end
+			end
+		end)
+
+        if not ply:IsAdmin() then
+            ply.nextStoneTime = CurTime() + RECHARGE_TIME
+        end
+    end
+end
+
+-- Supprime les dommages causés par le caillou
+hook.Add("EntityTakeDamage", "PreventStoneDamage", function(target, dmginfo)
+    if dmginfo:GetInflictor():GetClass() == "prop_physics" and dmginfo:GetInflictor():GetModel() == CAILLOU_MODEL then
+        dmginfo:SetDamage(0)
+    end
+end)
+
+-- Hook pour lancer un caillou lorsque F1 est pressé
+hook.Add("PlayerButtonDown", "ThrowStoneOnF1", function(ply, button)
+    if button == KEY_F1 then
+        ThrowStone(ply)
+    end
+end)
