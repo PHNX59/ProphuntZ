@@ -2,10 +2,10 @@
 require("mysqloo")
 
 local dbInfo = {
-    host = "94.23.50.189",
-    user = "prophuntz",
-    password = "KSmrnjrlwbrpktkV",
-    database = "prophuntz",
+    host = "",
+    user = "",
+    password = "",
+    database = "",
     port = 3306,
 }
 
