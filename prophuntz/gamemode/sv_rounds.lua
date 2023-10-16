@@ -26,13 +26,10 @@ local playersAlive = 0
 
 local roundInProgress = false
 
--- Sur le serveur, envoyez des données réseau au client lorsque quelque chose change
-
--- Dans votre fonction net.Receive pour mettre à jour playersAlive
 net.Receive("PHZ_UpdateHUDData", function()
     currentRound = net.ReadInt(32)
     timeRemaining = net.ReadFloat()
-    playersAlive = net.ReadInt(32)  -- Mettez à jour playersAlive avec la valeur reçue du serveur
+    playersAlive = net.ReadInt(32) 
 end)
 
 function HandlePlayerJoining(ply)
