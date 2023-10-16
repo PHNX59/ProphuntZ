@@ -28,15 +28,14 @@ function table.shuffle(t)
     return t
 end
 
-function RespawnAllPlayers(ply)
+function RespawnAllPlayers()
     print("[DEBUG] Début de RespawnAllPlayers()")
     for _, ply in ipairs(player.GetAll()) do
-        ply:Respawn()
+        ply:Spawn()
         print("[DEBUG] Respawn du joueur : " .. ply:Nick())
     end
     print("[DEBUG] Fin de RespawnAllPlayers()")
 end
-
 
 function StartHuntersFreeze()
     for _, ply in ipairs(player.GetAll()) do
@@ -154,9 +153,6 @@ function PHZ:RoundStart()
     net.Broadcast()
 
     for _, ply in ipairs(player.GetAll()) do
-        if not ply:Alive() then
-            ply:Spawn()
-        end
         ply:ChatPrint("La chasse commence!")
     end
 
