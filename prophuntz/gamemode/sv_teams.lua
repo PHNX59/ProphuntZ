@@ -1,7 +1,5 @@
--- Inclure les bibliothèques nécessaires
 include("shared.lua")
 
--- Définition de l'équipe des Props
 local TEAM_PROPS = 1
 local TEAM_HUNTERS = 2
 
@@ -9,9 +7,7 @@ function Print(message)
     print("[EQUIPE] " .. message)
 end
 
--- Fonction de configuration de l'équipe Props
 function ConfigurePropsTeam()
-    -- Liste des modèles pour les Props
     local propModels = {
         "models/player/p2_chell.mdl",
         "models/player/alyx.mdl",
