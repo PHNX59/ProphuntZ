@@ -16,6 +16,7 @@ local ROUND_TIME = 300
 local currentRound = ROUND_PREP
 local roundEndTime = 0
 local playersInPrep = 0
+local playersConnected = 0 -- Variable pour compter les joueurs connectés
 
 function table.shuffle(t)
     local n = #t
@@ -30,7 +31,6 @@ end
 function RespawnAllPlayers(ply)
     print("[DEBUG] Début de RespawnAllPlayers()")
     for _, ply in ipairs(player.GetAll()) do
-       
         ply:Respawn()
         print("[DEBUG] Respawn du joueur : " .. ply:Nick())
     end
@@ -97,7 +97,7 @@ function StartPrepRound()
     end
     print("[DEBUG] Fin de StartPrepRound()")
 
-      if currentRound == ROUND_PREP and (playersInPrep > 0) then
+      if currentRound == ROUND_PREP and (playersInPrep > 1) then
         print("[DEBUG] Démarrage du round actif")
         PHZ:RoundStart()
       end
@@ -205,6 +205,16 @@ function PHZ:Think()
         end
     end
 end
+
+hook.Add("PlayerInitialSpawn", "MonHookInitialSpawn", function(ply)
+ -- Augmenter le compteur de joueurs connectés
+    playersConnected = playersConnected + 1
+
+    -- Vérifier si le nombre de joueurs atteint 2 pour démarrer le round
+    if playersConnected >= 2 then
+        PHZ:RoundStart() -- Remplacez PHZ:RoundStart() par la fonction qui démarre votre round
+    end
+end)
 
 hook.Add("PlayerDeathThink", "PHZ_PreventRespawnDuringRound", function(ply)
     if currentRound == ROUND_ACTIVE then
