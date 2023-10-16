@@ -41,14 +41,12 @@ local flashPhrases = {
 	"voulait partager un peu de sa lumière intérieure. C'était peut-être un peu trop littéral...",
 }
 
--- Déclaration de variables globales
 local dernierControle = CurTime()
 local derniereLecture = {}
 local propsUtilisesFlash = {}
 local tirsChasseurs = {}
 local propColors = {}
 
--- Fonction utilitaire pour créer un leurre
 local function CreerLeurre(ply)
     local positionJoueur = ply:GetPos()
 
@@ -95,14 +93,13 @@ local function CreerLeurre(ply)
 end
 
 
--- Fonction pour trouver et afficher le joueur hunter le plus proche par rapport à un joueur props donné
 function FindNearestEnemy(currentPlayer)
     local currentPlayerPos = currentPlayer:GetPos()
     local nearestHunter = nil
     local nearestDistance = math.huge
 
     for _, hunter in pairs(player.GetAll()) do
-        if hunter:Team() == TEAM_HUNTERS then -- Remplacez TEAM_HUNTERS par l'ID de l'équipe des hunters
+        if hunter:Team() == TEAM_HUNTERS then
             local hunterPos = hunter:GetPos()
             local distance = currentPlayerPos:Distance(hunterPos)
 
@@ -117,7 +114,6 @@ function FindNearestEnemy(currentPlayer)
 end
 
 
--- Crochet pour l'aptitude Leurre
 hook.Add("PlayerButtonDown", "AptitudeLeurre", function(ply, bouton)
     if bouton == KEY_PAD_2 then
         if ply:Team() == TEAM_PROPS then
@@ -133,7 +129,6 @@ hook.Add("PlayerButtonDown", "AptitudeLeurre", function(ply, bouton)
     end
 end)
 
--- Crochet pour l'aptitude Son de Proximité
 hook.Add("Think", "SonProximiteAptitude", function()
     if CurTime() - dernierControle > config.intervalleVerification then
         for _, chasseur in pairs(player.GetAll()) do
@@ -158,7 +153,6 @@ hook.Add("Think", "SonProximiteAptitude", function()
     end
 end)
 
--- Fonction utilitaire pour créer une Grenade Flash
 local function CreerGrenadeFlash(cible)
     local grenadeFlash = ents.Create("npc_grenade_frag")
     if not IsValid(grenadeFlash) then return end
@@ -176,23 +170,19 @@ local function CreerGrenadeFlash(cible)
     return grenadeFlash
 end
 
--- Fonction utilitaire pour ajuster la probabilité
 local function ReglerProbabilite(multiplicateur)
     config.multiplicateurProbabilite = multiplicateur
 end
 
--- Fonction utilitaire pour ajuster le multiplicateur du compteur de tirs
 local function ReglerMultiplicateurCompteurTirs(multiplicateur)
     config.multiplicateurCompteurTirs = multiplicateur
 end
 
--- Fonction utilitaire pour ajouter un tir pour un chasseur
 local function AjouterTirChasseur(ply)
     local steamID = ply:SteamID()
     tirsChasseurs[steamID] = (tirsChasseurs[steamID] or 0) + 1
 end
 
--- Fonction utilitaire pour tenter de déclencher l'aptitude Flash avec une probabilité ajustée
 local function EssayerDeclencherAptitudeFlash(attaquant, cible)
     local devraitDeclencher = math.random(1, config.multiplicateurProbabilite) == 1
 
@@ -220,15 +210,11 @@ local function EssayerDeclencherAptitudeFlash(attaquant, cible)
     end
 end
 
--- Fonction pour régénérer 1 PV pour les joueurs de l'équipe "Props"
 local function RegenerateHealthForProps()
     for _, player in pairs(player.GetAll()) do
-        -- Vérifiez si le joueur est dans l'équipe "Props"
         if player:Team() == TEAM_PROPS then
-            -- Ajoutez 1 PV au joueur
             local currentHealth = player:Health()
             local maxHealth = player:GetMaxHealth()
-
             if currentHealth < maxHealth then
                 player:SetHealth(math.min(currentHealth + 1, maxHealth))
             end
@@ -236,10 +222,8 @@ local function RegenerateHealthForProps()
     end
 end
 
--- Créez un timer qui appelle la fonction de régénération toutes les 10 secondes
 timer.Create("RegeneratePropsHealth", 1, 0, RegenerateHealthForProps)
 
--- Crochet pour cloner la team et l'apparence du joueur le plus proche en appuyant sur Key Pad 4
 hook.Add("PlayerButtonDown", "CloneTeamAndAppearance", function(player, button)
     if button == KEY_PAD_4 then
         local currentPlayer = player
@@ -261,7 +245,6 @@ hook.Add("PlayerButtonDown", "CloneTeamAndAppearance", function(player, button)
     end
 end)
 
--- Crochet pour les dégâts infligés aux entités
 hook.Add("EntityTakeDamage", "TirsChasseurs", function(cible, infoDegats)
     local attaquant = infoDegats:GetAttacker()
     if cible:IsPlayer() and cible:Team() == TEAM_PROPS and attaquant:IsPlayer() and attaquant:Team() == HUNTERS then
@@ -269,7 +252,6 @@ hook.Add("EntityTakeDamage", "TirsChasseurs", function(cible, infoDegats)
     end
 end)
 
--- Crochet pour les dégâts aux entités
 hook.Add("EntityTakeDamage", "AptitudeFlashProps", function(cible, infoDegats)
     if cible:IsPlayer() and cible:Team() == TEAM_PROPS and not propsUtilisesFlash[cible:UserID()] then
         local attaquant = infoDegats:GetAttacker()
