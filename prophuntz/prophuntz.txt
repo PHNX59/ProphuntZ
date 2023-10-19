@@ -1,8 +1,0 @@
-"prophuntz"
-{
-    "name"      "prophuntz"
-    "version"   "1.0"
-    "author_name"   "Florian_RVD"
-    "base"      "base"
-    "icon"      "icon16/page.png"
-}
