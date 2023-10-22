@@ -19,14 +19,17 @@ local HUNTERS_FREEZE_TIME = 20
 local HUNTERS_BLUR_AMOUNT = 100
 local HUNTERS_VISION_ZOOM = 150
 
-local currentRound = ROUND_PREP
+local currentRound = ROUND_WAITING
 local roundEndTime = 0
 local playersInPrep = 0
 local playersConnected = 0 
 local playersAlive = 0
+local numProps = 0
+local numHunters = 0
 local deadPlayers = {}
 local canRespawn = false
 local roundInProgress = false
+
 
 function HandlePlayerJoining(ply)
     playersConnected = playersConnected + 1
@@ -63,6 +66,11 @@ function StartHuntersFreeze()
     local frozenPlayers = {}
     print("[DEBUG] Début du gel des chasseurs...")
 
+	local soundPath = "ambient/alarms/warningbell1.wav"
+    local volume = 1 -- Ajustez le volume si nécessaire
+    local pitch = 100 -- Ajustez la hauteur du son (pitch) si nécessaire
+    sound.Play(soundPath, Vector(0, 0, 0), volume, pitch, 1, CHAN_AUTO)
+	
     for _, ply in ipairs(player.GetAll()) do
         if ply:Team() == TEAM_HUNTERS and ply:Alive() then
             ply:ScreenFade(SCREENFADE.MODULATE, Color(0, 0, 0, 255), 20, 0)
@@ -109,8 +117,6 @@ function AssignRoles()
         local player = players[i]
         if IsValid(player) then
             player:SetTeam(TEAM_PROPS)
-            ConfigurePropsTeam()
-            RespawnAllPlayers(player)
             print("[DEBUG] " .. player:Nick() .. " est un Prop")
         end
     end
@@ -119,28 +125,54 @@ function AssignRoles()
         local player = players[i]
         if IsValid(player) then
             player:SetTeam(TEAM_HUNTERS)
-            ConfigureHuntersTeam()
-            RespawnAllPlayers(player)
             print("[DEBUG] " .. player:Nick() .. " est un Hunter")
         end
     end
-	RespawnAllPlayers()
-    playersAlive = #players
-end
+	
+	for _, ply in ipairs(player.GetAll()) do
+		if IsValid(ply) and ply:IsPlayer() and ply:Team() == TEAM_PROPS then
+			ply:Spawn()  -- Réapparition du joueur (assurez-vous d'avoir cette fonction définie)
+			ConfigurePropsTeam()  -- Configuration de l'équipe "Props" (assurez-vous d'avoir cette fonction définie)
+		end
+	end
+	
+	for _, ply in ipairs(player.GetAll()) do
+		if IsValid(ply) and ply:IsPlayer() and ply:Team() == TEAM_PROPS then
+			ply:Spawn()  -- Réapparition du joueur (assurez-vous d'avoir cette fonction définie)
+			ConfigureHuntersTeam()  -- Configuration de l'équipe "Props" (assurez-vous d'avoir cette fonction définie)
+		end
+	end
 
-function PHZ:Initialize()
-    StartWaitingRound()
+    playersAlive = #players
+	
 end
 
 function StartWaitingRound()
     currentRound = ROUND_WAITING
-    roundEndTime = 0 -- Vous pouvez définir une valeur appropriée si nécessaire
+    roundEndTime = 0
     local message = "En attente de joueurs..."
+	
 	AssignRoles()
+
     for _, ply in ipairs(player.GetAll()) do
         if IsValid(ply) and ply:IsPlayer() then
             ply:PrintMessage(HUD_PRINTCENTER, message)
         end
+    end
+
+    for _, ply in ipairs(player.GetAll()) do
+        if IsValid(ply) and ply:IsPlayer() then
+            if ply:Team() == TEAM_PROPS then
+                numProps = numProps + 1
+            elseif ply:Team() == TEAM_HUNTERS then
+                numHunters = numHunters + 1
+            end
+        end
+    end
+
+    -- Si chaque équipe a au moins un joueur, alors démarrer le round
+    if numProps >= 1 and numHunters >= 1 then
+        StartPrepRound()
     end
 end
 
@@ -155,10 +187,31 @@ function StartPrepRound()
         end
     end
 
-    timer.Create("CheckPlayersInPrepTimer", 1, 0, function()
-        if currentRound == ROUND_PREP and (playersInPrep >= ROUND_START_PLAYERS) then
-            PHZ:RoundStart()
-            timer.Remove("CheckPlayersInPrepTimer")
+    timer.Create("CheckPlayersInPrepTimer", 5, 0, function()
+        if currentRound == ROUND_PREP then
+            local playersInTeams = {} -- Un tableau pour compter les joueurs dans chaque équipe
+            for _, ply in ipairs(player.GetAll()) do
+                if IsValid(ply) and ply:IsPlayer() then
+                    local teamID = ply:Team()
+                    if not playersInTeams[teamID] then
+                        playersInTeams[teamID] = 0
+                    end
+                    playersInTeams[teamID] = playersInTeams[teamID] + 1
+                end
+            end
+            
+            local enoughPlayers = true
+            for teamID, numPlayers in pairs(playersInTeams) do
+                if numPlayers < 1 then
+                    enoughPlayers = false
+                    break
+                end
+            end
+
+            if enoughPlayers then
+                PHZ:RoundStart()
+                timer.Remove("CheckPlayersInPrepTimer")
+            end
         end
     end)
 end
@@ -262,7 +315,7 @@ function PHZ:RoundEnd()
 
     timer.Simple(5, function()
         if currentRound == ROUND_END then
-            StartPrepRound()
+            StartWaitingRound()
         end
         -- Réactiver la possibilité de réapparaître
         canRespawn = true
@@ -300,25 +353,33 @@ function PHZ:Think()
 end
 
 hook.Add("CanPlayerSuicide", "PHZ_CanPlayerSuicide", function(ply)
-    if currentRound == ROUND_ACTIVE then
+    if currentRound == ROUND_ACTIVE or currentRound == ROUND_END then
         return false
     end
 end)
 
 hook.Add("PlayerDeath", "PHZ_PlayerDeath", function(ply)
-    if currentRound == ROUND_ACTIVE then
+    if currentRound == ROUND_ACTIVE or currentRound == ROUND_END then
         table.insert(deadPlayers, ply)
     end
+	return false
 end)
 
-hook.Add("PlayerInitialSpawn", "MonHookInitialSpawn", function(ply)
+hook.Add("PlayerInitialSpawn", "InitialSpawn", function(ply)
     playersConnected = playersConnected + 1
     playersInPrep = playersInPrep + 1
-	AssignRoles()
-	StartWaitingRound()
+
+    -- Si le round est en cours, ne redémarrez pas le round immédiatement
+    if currentRound == ROUND_ACTIVE or currentRound == ROUND_END then
+        ply:SetTeam(TEAM_SPECTATORS)
+        ply:PrintMessage(HUD_PRINTCENTER, "Vous avez rejoint un round en cours en tant que spectateur.")
+        return
+    end
+
+    StartWaitingRound()
+
     if playersConnected >= ROUND_START_PLAYERS then
         PHZ:RoundStart()
-		AssignRoles()
     end
 end)
 
@@ -333,14 +394,40 @@ hook.Add("PlayerDisconnected", "TrackPlayersInPrep", function(ply)
 end)
 
 hook.Add("PlayerSpawn", "PHZ_PlayerSpawn", function(ply)
-    if currentRound == ROUND_ACTIVE and table.HasValue(deadPlayers, ply) then
-        ply:PrintMessage(HUD_PRINTCENTER, "Vous ne pouvez pas respawn tant que le round est en cours.")
-        return false
+    -- Compte combien de joueurs sont déjà dans chaque équipe.
+    local numProps = team.NumPlayers(TEAM_PROPS)
+    local numHunters = team.NumPlayers(TEAM_HUNTERS)
+
+    -- Si une équipe a 0 joueurs, attribuez au joueur actuel la team qui en a moins.
+    if numProps == 0 then
+        ply:SetTeam(TEAM_PROPS)
+    elseif numHunters == 0 then
+        ply:SetTeam(TEAM_HUNTERS)
+    else
+        -- Si les deux équipes ont déjà un joueur, attribuez-le au hasard.
+        if math.random(2) == 1 then
+            ply:SetTeam(TEAM_PROPS)
+        else
+            ply:SetTeam(TEAM_HUNTERS)
+        end
     end
+
+    -- Appelez ConfigurePropsTeam() une seule fois après avoir attribué les équipes
+    -- Assurez-vous que cette fonction gère la configuration de l'équipe des Props correctement.
+    ConfigurePropsTeam()
+	ConfigureHuntersTeam()
+    -- Le reste de votre code de gestion du spawn des joueurs ici...
 end)
 
 hook.Add("PlayerDeathThink", "PHZ_PlayerDeathThink", function(ply)
     if currentRound == ROUND_ACTIVE and not canRespawn then
         return false
+    end
+end)
+
+hook.Add("PlayerDeath", "PlayDeathSound", function(player, inflictor, attacker)
+    if player:Team() == TEAM_PROPS then
+        -- Jouez le son ici
+        player:EmitSound("vo/npc/Barney/ba_damnit.wav")
     end
 end)
