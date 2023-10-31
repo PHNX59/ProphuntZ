@@ -552,7 +552,7 @@ end)
 hook.Add("PlayerDeath", "PHZ_PlayerDeath", function(ply)
     if currentRound == ROUND_ACTIVE or currentRound == ROUND_END then
         table.insert(deadPlayers, ply)
-        ply:SetTeam(SPECTATOR_TEAM) -- Mettez le joueur en mode spectateur lorsqu'il meurt
+        ply:SetTeam(TEAM_SPECTATORS) -- Mettez le joueur en mode spectateur lorsqu'il meurt
         ply:StripWeapons() -- Retirez les armes du joueur
         ply:UnSpectate() -- Assurez-vous qu'il n'est pas en mode spectateur avant de le mettre en spectateur
         ply:Spectate(SPEC_MODES.OBS_MODE_ROAMING) -- Définissez le mode spectateur par défaut
